@@ -51,19 +51,21 @@ check "verify token" python3 -c "import json,sys; d=json.loads(sys.argv[1]); sys
 curl -sf -X POST "$BASE/ledger/transactions" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"amount":5000,"direction":"credit","description":"Salary"}' > /dev/null
+  -d '{"amount":5000.10,"direction":"credit","description":"Salary"}' > /dev/null
 check "create credit tx" test $? -eq 0
 
 # 6. Create large debit (triggers alert)
 curl -sf -X POST "$BASE/ledger/transactions" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"amount":12000,"direction":"debit","description":"Equipment"}' > /dev/null
+  -d '{"amount":12000.20,"direction":"debit","description":"Equipment"}' > /dev/null
 check "create large debit tx" test $? -eq 0
 
 # 7. Balance
 BAL=$(curl -sf "$BASE/ledger/balance" -H "Authorization: Bearer $TOKEN")
-check "balance is -7000" bash -c "echo '$BAL' | python3 -c \"import json,sys; b=json.load(sys.stdin)['balance']; sys.exit(0 if b == -7000 else 1)\""
+check "decimal balance is exact" python3 -c \
+  "import json,sys; from decimal import Decimal; b=json.loads(sys.argv[1])['balance']; sys.exit(0 if Decimal(str(b)) == Decimal('-7000.10') else 1)" \
+  "$BAL"
 
 # 8. Transaction list
 TXS=$(curl -sf "$BASE/ledger/transactions" -H "Authorization: Bearer $TOKEN")
@@ -71,10 +73,27 @@ check "2 transactions listed" bash -c "echo '$TXS' | python3 -c \"import json,sy
 
 # 9. Alerts (notification service may need a moment for redis pub/sub)
 sleep 2
-ALERTS=$(curl -sf "$BASE/notifications/alerts")
+ALERTS=$(curl -sf "$BASE/notifications/alerts" -H "Authorization: Bearer $TOKEN")
 check "large transaction alert" bash -c "echo '$ALERTS' | grep -q LARGE_TRANSACTION"
 
-# 10. 401 on bad token
+# 10. Alerts require authentication
+check "alerts reject missing token" bash -c "curl -s -o /dev/null -w '%{http_code}' '$BASE/notifications/alerts' | grep -q 401"
+
+# 11. A second user cannot read the first user's alerts
+EMAIL2="uitest-other-$(date +%s)@clearledger.io"
+curl -sf -X POST "$BASE/auth/register" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"$EMAIL2\",\"password\":\"$PASS\"}" > /dev/null
+LOGIN2=$(curl -sf -X POST "$BASE/auth/login" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"$EMAIL2\",\"password\":\"$PASS\"}")
+TOKEN2=$(echo "$LOGIN2" | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
+ALERTS2=$(curl -sf "$BASE/notifications/alerts" -H "Authorization: Bearer $TOKEN2")
+check "alerts are isolated by user" python3 -c \
+  "import json,sys; data=json.loads(sys.argv[1]); sys.exit(0 if data['total'] == 0 and data['alerts'] == [] else 1)" \
+  "$ALERTS2"
+
+# 12. 401 on bad token
 check "401 on bad token" bash -c "curl -sf -o /dev/null -w '%{http_code}' '$BASE/ledger/balance' -H 'Authorization: Bearer badtoken' | grep -q 401"
 
 echo ""

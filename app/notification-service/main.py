@@ -1,5 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, Header, HTTPException
 from pydantic_settings import BaseSettings
+import httpx
 import redis
 import json
 import threading
@@ -63,6 +64,7 @@ setup_telemetry("notification-service")
 
 class Settings(BaseSettings):
     redis_url: str
+    auth_service_url: str
     service_name: str = "notification-service"
     alert_threshold: float = 10000.0
 
@@ -86,6 +88,23 @@ install_prometheus(app, settings.service_name)
 
 # In-memory alert log — replace with a database in production
 alerts = []
+alerts_lock = threading.Lock()
+
+
+def get_current_user(authorization: str | None = Header(default=None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        response = httpx.get(
+            f"{settings.auth_service_url}/verify",
+            headers={"Authorization": authorization},
+            timeout=5.0,
+        )
+    except httpx.RequestError:
+        raise HTTPException(status_code=503, detail="Auth service unavailable")
+    if response.status_code != 200:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return response.json()
 
 
 def start_subscriber():
@@ -112,7 +131,8 @@ def start_subscriber():
                             f"({event['direction']}) exceeds threshold"
                         ),
                     }
-                    alerts.append(alert)
+                    with alerts_lock:
+                        alerts.append(alert)
                     logger.warning(
                         f"ALERT: {alert['type']} | user={alert['user_id']} "
                         f"| amount={alert['amount']}"
@@ -133,5 +153,9 @@ def health():
 
 
 @app.get("/alerts")
-def get_alerts():
-    return {"total": len(alerts), "alerts": alerts[-50:]}
+def get_alerts(user: dict = Depends(get_current_user)):
+    with alerts_lock:
+        user_alerts = [
+            alert for alert in alerts if alert["user_id"] == user["user_id"]
+        ]
+    return {"total": len(user_alerts), "alerts": user_alerts[-50:]}

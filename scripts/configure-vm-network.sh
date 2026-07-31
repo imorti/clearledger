@@ -70,6 +70,9 @@ if data.get("dns") == dns:
     print(0)
     sys.exit(0)
 data["dns"] = dns
+parent = os.path.dirname(path)
+if parent:
+    os.makedirs(parent, mode=0o755, exist_ok=True)
 tmp = path + ".clearledger-new"
 with open(tmp, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2)
@@ -79,8 +82,12 @@ print(1)
 PY
   )"
   if [[ "${docker_changed}" -eq 1 ]]; then
-    sudo systemctl restart docker
-    sleep 2
+    if command -v docker >/dev/null 2>&1 && sudo systemctl cat docker.service >/dev/null 2>&1; then
+      sudo systemctl restart docker
+      sleep 2
+    else
+      echo "    Docker is not installed yet; resolver saved for first daemon start"
+    fi
   else
     echo "    already configured"
   fi
@@ -95,7 +102,9 @@ PY
     fi
   done
 
-  if docker run --rm alpine:3.20 getent hosts registry-1.docker.io >/dev/null 2>&1; then
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "    - container DNS check skipped (Docker is not installed yet)"
+  elif docker run --rm alpine:3.20 getent hosts registry-1.docker.io >/dev/null 2>&1; then
     echo "    ✓ container: registry-1.docker.io"
   else
     echo "    ✗ container: registry-1.docker.io" >&2

@@ -34,6 +34,9 @@ spec:
         - podSelector:
             matchLabels:
               app: ledger-service
+        - podSelector:
+            matchLabels:
+              app: notification-service
         - namespaceSelector:
             matchLabels:
               # MicroK8s lab uses namespace "ingress". Standard nginx installs use "ingress-nginx".
@@ -196,7 +199,7 @@ spec:
             matchLabels:
               kubernetes.io/metadata.name: ingress
 ---
-# notification-service: subscribes to redis; accepts from ingress and Prometheus scraper; egresses to redis, OTel collector, DNS
+# notification-service: subscribes to redis; accepts from ingress and Prometheus scraper; egresses to auth, redis, OTel collector, DNS
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -220,6 +223,12 @@ spec:
       ports:
         - port: 8000
   egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: auth-service
+      ports:
+        - port: 8000
     - to:
         - podSelector:
             matchLabels:

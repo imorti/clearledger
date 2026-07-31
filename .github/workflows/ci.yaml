@@ -6,10 +6,6 @@ on:
     # Stage 8 AWS manifests use ci-aws.yaml (GitHub-hosted). Homelab CI skips these paths.
     paths-ignore:
       - 'stages/stage-8-aws-migration/**'
-  pull_request:
-    branches: [main]
-    paths-ignore:
-      - 'stages/stage-8-aws-migration/**'
   schedule:
     # Compliance scans (kube-bench) run weekly, not per commit.
     - cron: "0 6 * * 1"  # every Monday 6am
@@ -30,6 +26,26 @@ env:
   GRYPE_DB_MAX_ALLOWED_BUILT_AGE: 336h
 
 jobs:
+  compliance-scan:
+    name: "Weekly CIS benchmark (kube-bench)"
+    runs-on: [self-hosted, clearledger]
+    if: github.event_name == 'schedule' && vars.CLEARLEDGER_CI_TARGET != 'aws'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout benchmark and baseline
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Run kube-bench and fail on baseline regressions
+        run: bash stages/stage-4-admission-control/scripts/run-kube-bench.sh
+
+      - name: Upload compliance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kube-bench-report
+          path: stages/stage-4-admission-control/scripts/kube-bench-report.json
+
   # ───────────────────────────────────────────────────────────────────────────
   # GATE 1: SECRETS SCAN!
   # Catch hardcoded secrets before anything else runs.
@@ -45,7 +61,7 @@ jobs:
     if: github.event_name != 'schedule' && vars.CLEARLEDGER_CI_TARGET != 'aws'
     steps:
       - name: Checkout code (full history for secrets scan)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 0  # full history — scan every commit, not just HEAD
 
@@ -65,7 +81,7 @@ jobs:
 
       - name: Upload Gitleaks report (evidence)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: gitleaks-report
           path: gitleaks-report.json
@@ -84,13 +100,13 @@ jobs:
     if: vars.CLEARLEDGER_CI_TARGET != 'aws'
     steps:
       - name: Checkout code (SAST runs on source)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Install Semgrep (OWASP-focused rulesets)
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-pip
-          python3 -m pip install --user semgrep
+          python3 -m pip install --user semgrep==1.172.0
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Run Semgrep (fail on findings)
@@ -107,7 +123,7 @@ jobs:
 
       - name: Upload Semgrep results (evidence)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: semgrep-results
           path: semgrep-results.json
@@ -125,13 +141,13 @@ jobs:
     if: vars.CLEARLEDGER_CI_TARGET != 'aws'
     steps:
       - name: Checkout code (IaC lives in infra/)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Install Checkov (policy-as-code for IaC)
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-pip
-          python3 -m pip install --user checkov
+          python3 -m pip install --user checkov==3.3.8
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Scan Kubernetes manifests (evidence only in Stage 1)
@@ -156,7 +172,7 @@ jobs:
 
       - name: Upload Checkov results (evidence)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: checkov-results
           path: "checkov-*-results.json"
@@ -214,7 +230,7 @@ jobs:
     if: vars.CLEARLEDGER_CI_TARGET != 'aws'
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Build all services (sequential — one runner, shared pip cache)
         run: |
@@ -245,7 +261,7 @@ jobs:
     if: vars.CLEARLEDGER_CI_TARGET != 'aws'
     steps:
       - name: Checkout code (.grype.yaml ignore rules)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Trivy scan all images (HIGH/CRITICAL)
         run: |
@@ -274,7 +290,7 @@ jobs:
 
       - name: Upload scan evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: image-scan-results
           path: |
@@ -292,10 +308,10 @@ jobs:
     needs: [scan-images]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
@@ -338,12 +354,12 @@ jobs:
     if: github.ref == 'refs/heads/main' && vars.CLEARLEDGER_CI_TARGET != 'aws'
     steps:
       - name: Checkout app repo (canonical manifests)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           path: app
 
       - name: Checkout infra repo (GitOps target)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           # clearledger-infra is a separate GitHub repo — the GitOps source of truth.
           # INFRA_REPO_TOKEN: a GitHub PAT with repo scope.
@@ -427,7 +443,7 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.ENABLE_DAST == 'true' && vars.CLEARLEDGER_CI_TARGET != 'aws'
     steps:
       - name: Checkout app repo (DAST config + custom tests live here)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Wait for ArgoCD sync (tests deployed artifact)
         run: sleep 60
@@ -484,7 +500,7 @@ jobs:
 
       - name: Upload DAST artifacts (evidence)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: dast-reports
           path: |

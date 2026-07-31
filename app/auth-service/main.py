@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from pydantic_settings import BaseSettings
 from sqlalchemy import create_engine, Column, String, DateTime, Boolean
 from sqlalchemy.ext.declarative import declarative_base
@@ -243,10 +243,32 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
 
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, password: str) -> str:
+        if len(password) < 12:
+            raise ValueError("password must be at least 12 characters")
+        if len(password.encode("utf-8")) > 72:
+            raise ValueError("password must be at most 72 UTF-8 bytes")
+        if not any(ch.islower() for ch in password):
+            raise ValueError("password must contain a lowercase letter")
+        if not any(ch.isupper() for ch in password):
+            raise ValueError("password must contain an uppercase letter")
+        if not any(ch.isdigit() for ch in password):
+            raise ValueError("password must contain a number")
+        return password
+
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+    @field_validator("password")
+    @classmethod
+    def limit_password_size(cls, password: str) -> str:
+        if len(password.encode("utf-8")) > 72:
+            raise ValueError("password must be at most 72 UTF-8 bytes")
+        return password
 
 
 class TokenResponse(BaseModel):
@@ -287,7 +309,7 @@ install_prometheus(app, settings.service_name)
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": settings.service_name}
+    return {"status": "ok", "service": settings.service_name, "version": "0.2.0"}
 
 
 @app.post("/register", status_code=status.HTTP_201_CREATED)
@@ -309,7 +331,11 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
 @app.post("/login", response_model=TokenResponse)
 def login(req: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == req.email).first()
-    if not user or not verify_password(req.password, user.hashed_password):
+    if (
+        not user
+        or not user.is_active
+        or not verify_password(req.password, user.hashed_password)
+    ):
         logger.warning(f"Failed login attempt for {req.email}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

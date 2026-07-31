@@ -4,7 +4,10 @@ starlette>=0.49.1
 uvicorn==0.30.1
 sqlalchemy==2.0.31
 asyncpg==0.31.0
-python-jose[cryptography]==3.5.0
+# ClearLedger signs HS256 tokens, which use Python's standard-library HMAC.
+# Do not install the optional asymmetric cryptography backend: cryptography
+# 50.0.0 currently raises SIGILL in ARM64 Multipass guests on Apple Silicon.
+python-jose==3.5.0
 pyasn1>=0.6.3
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1

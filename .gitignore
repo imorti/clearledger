@@ -1,6 +1,9 @@
 # Cosign private key — NEVER commit this
 cosign.key
 
+# Local Docker registry credentials / access tokens
+docker.key
+
 # Public key — safe to share, but exclude from repo so learners explicitly add their own
 cosign.pub
 infra/cosign.pub
@@ -41,7 +44,6 @@ kubeconfig
 
 stages/stage-3-security-gates/dast/__pycache__/
 
-# freeCodeCamp draft and lab guide — not part of the public repo
-docs/LAB-GUIDE.md
+# freeCodeCamp drafts — not part of the public repo
 docs/fcc.md
 docs/fcc copy.md

@@ -1,0 +1,89 @@
+name: Pull Request Validation
+
+on:
+  pull_request:
+    branches: [main]
+
+# Pull requests are intentionally isolated on an ephemeral GitHub-hosted runner.
+# Never move this workflow to the homelab runner: PR-controlled Dockerfiles and
+# shell scripts must not execute beside the local cluster or long-lived secrets.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Security and integration checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+
+      - name: Scan repository history for secrets
+        uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate Python and shell syntax
+        run: |
+          set -euo pipefail
+          python3 -m compileall -q app stages/stage-3-security-gates/dast
+          while IFS= read -r script; do
+            bash -n "$script"
+          done < <(find scripts stages -type f -name '*.sh' -print)
+
+      - name: Validate GitHub Actions workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+
+      - name: Run Semgrep security rules
+        run: |
+          python3 -m pip install --user semgrep==1.172.0
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/semgrep" \
+            --config=p/python \
+            --config=p/security-audit \
+            --config=p/secrets \
+            --config=p/owasp-top-ten \
+            --error \
+            app/auth-service/ app/ledger-service/ app/notification-service/
+
+      - name: Scan IaC and Dockerfiles
+        run: |
+          python3 -m pip install --user checkov==3.3.8
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/checkov" \
+            --directory infra/manifests \
+            --framework kubernetes \
+            --soft-fail
+          "$HOME/.local/bin/checkov" \
+            --directory stages/stage-8-aws-migration/terraform \
+            --framework terraform \
+            --soft-fail
+          "$HOME/.local/bin/checkov" \
+            --directory . \
+            --framework dockerfile \
+            --skip-path app/frontend/Dockerfile.dev \
+            --hard-fail-on HIGH,CRITICAL
+
+      - name: Validate Compose model
+        run: docker compose -f docker-compose.integration.yml config --quiet
+
+      - name: Start isolated integration stack
+        run: docker compose -f docker-compose.integration.yml up --build --wait
+
+      - name: Exercise authentication, ledger, and alert isolation
+        run: make integration-test
+
+      - name: Capture service logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.integration.yml logs --no-color
+
+      - name: Tear down integration stack
+        if: always()
+        run: docker compose -f docker-compose.integration.yml down --volumes

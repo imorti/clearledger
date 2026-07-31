@@ -126,8 +126,8 @@ def test_negative_amount_transaction() -> tuple[bool, str]:
     Business logic: negative amounts must not post as valid credits (debit bypass).
     """
     em = f"dast-neg-{uuid.uuid4().hex[:8]}@clearledger.local"
-    _register_or_login(em, "Pass123456!")
-    tok, _ = _login(em, "Pass123456!")
+    _register_or_login(em, "StrongPass123!")
+    tok, _ = _login(em, "StrongPass123!")
     r = _req(
         "POST",
         "/ledger/transactions",
@@ -217,18 +217,27 @@ def test_jwt_expired_token() -> tuple[bool, str]:
     return False, "expired JWT accepted"
 
 
-def _fetch_alerts() -> list[dict[str, Any]]:
-    r = _req("GET", "/notifications/alerts")
+def _fetch_alerts(token: str) -> list[dict[str, Any]]:
+    r = _req(
+        "GET",
+        "/notifications/alerts",
+        headers={"Authorization": f"Bearer {token}"},
+    )
     if r.status_code != 200:
         raise RuntimeError(f"/notifications/alerts: {r.status_code} {r.text}")
     data = r.json()
     return list(data.get("alerts") or [])
 
 
-def _wait_for_alert_tx(transaction_id: str, *, deadline_s: float = 12.0) -> bool:
+def _wait_for_alert_tx(
+    transaction_id: str,
+    token: str,
+    *,
+    deadline_s: float = 12.0,
+) -> bool:
     end = time.monotonic() + deadline_s
     while time.monotonic() < end:
-        for a in _fetch_alerts():
+        for a in _fetch_alerts(token):
             if a.get("transaction_id") == transaction_id:
                 return True
         time.sleep(0.5)
@@ -242,8 +251,8 @@ def test_large_transaction_bypass() -> tuple[bool, str]:
     Fintech impact: AML / fraud monitoring must not be bypassed around policy limits.
     """
     em = f"dast-large-{uuid.uuid4().hex[:8]}@clearledger.local"
-    _register_or_login(em, "Pass123456!")
-    tok, uid = _login(em, "Pass123456!")
+    _register_or_login(em, "StrongPass123!")
+    tok, uid = _login(em, "StrongPass123!")
     r1 = _req(
         "POST",
         "/ledger/transactions",
@@ -260,9 +269,13 @@ def test_large_transaction_bypass() -> tuple[bool, str]:
         return False, "under-threshold create failed"
     tx_small = r1.json()["id"]
     time.sleep(2.0)
-    for a in _fetch_alerts():
+    for a in _fetch_alerts(tok):
         if a.get("transaction_id") == tx_small:
-            ra = _req("GET", "/notifications/alerts")
+            ra = _req(
+                "GET",
+                "/notifications/alerts",
+                headers={"Authorization": f"Bearer {tok}"},
+            )
             _print_fail(
                 "Large transaction threshold",
                 f"GET {BASE_URL}/notifications/alerts (unexpected alert for {tx_small})",
@@ -286,11 +299,15 @@ def test_large_transaction_bypass() -> tuple[bool, str]:
         )
         return False, "over-threshold create failed"
     tx_large = r2.json()["id"]
-    if not _wait_for_alert_tx(tx_large):
+    if not _wait_for_alert_tx(tx_large, tok):
         _print_fail(
             "Large transaction threshold",
             f"wait for alert transaction_id={tx_large} user_id={uid}",
-            _req("GET", "/notifications/alerts"),
+            _req(
+                "GET",
+                "/notifications/alerts",
+                headers={"Authorization": f"Bearer {tok}"},
+            ),
             "no LARGE_TRANSACTION alert observed via /notifications/alerts",
         )
         return False, "alert did not fire for amount >= threshold"
@@ -302,8 +319,8 @@ def test_mass_assignment() -> tuple[bool, str]:
     Mass assignment: client-supplied user_id must not override server-side identity.
     """
     em = f"dast-mass-{uuid.uuid4().hex[:8]}@clearledger.local"
-    _register_or_login(em, "Pass123456!")
-    tok, uid = _login(em, "Pass123456!")
+    _register_or_login(em, "StrongPass123!")
+    tok, uid = _login(em, "StrongPass123!")
     fake_other = str(uuid.uuid4())
     r = _req(
         "POST",

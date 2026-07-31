@@ -1,11 +1,12 @@
 from fastapi import FastAPI, HTTPException, Depends, status, Header
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
-from sqlalchemy import create_engine, Column, String, Float, DateTime, Text
+from sqlalchemy import create_engine, Column, String, Numeric, DateTime, Text, case, func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from datetime import datetime
 from typing import Optional
+from decimal import Decimal
 import uuid
 import os
 import httpx
@@ -75,7 +76,7 @@ setup_telemetry("ledger-service")
 class Settings(BaseSettings):
     auth_service_url: str
     redis_url: str
-    notification_threshold: float = 10000.0
+    notification_threshold: Decimal = Decimal("10000.00")
     service_name: str = "ledger-service"
 
     @property
@@ -104,7 +105,7 @@ class Transaction(Base):
     __tablename__ = "transactions"
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String, nullable=False, index=True)
-    amount = Column(Float, nullable=False)
+    amount = Column(Numeric(18, 2), nullable=False)
     direction = Column(String, nullable=False)  # credit / debit
     description = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -126,7 +127,9 @@ redis_client = redis.from_url(settings.redis_url, decode_responses=True)
 
 
 # ── Auth dependency ───────────────────────────────────────────────────────────
-def get_current_user(authorization: str = Header(...)):
+def get_current_user(authorization: Optional[str] = Header(default=None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         resp = httpx.get(
             f"{settings.auth_service_url}/verify",
@@ -142,7 +145,7 @@ def get_current_user(authorization: str = Header(...)):
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 class TransactionRequest(BaseModel):
-    amount: float
+    amount: Decimal = Field(gt=0, max_digits=18, decimal_places=2)
     direction: str  # credit / debit
     description: Optional[str] = None
 
@@ -150,7 +153,7 @@ class TransactionRequest(BaseModel):
 class TransactionResponse(BaseModel):
     id: str
     user_id: str
-    amount: float
+    amount: Decimal
     direction: str
     description: Optional[str]
     created_at: datetime
@@ -158,7 +161,7 @@ class TransactionResponse(BaseModel):
 
 class BalanceResponse(BaseModel):
     user_id: str
-    balance: float
+    balance: Decimal
 
 
 # ── App ───────────────────────────────────────────────────────────────────────
@@ -195,11 +198,6 @@ def create_transaction(
     db: Session = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    if req.amount <= 0:
-        raise HTTPException(
-            status_code=422,
-            detail="amount must be positive",
-        )
     if req.direction not in ("credit", "debit"):
         raise HTTPException(
             status_code=400, detail="direction must be credit or debit"
@@ -219,7 +217,8 @@ def create_transaction(
         event = {
             "event": "large_transaction",
             "user_id": user["user_id"],
-            "amount": req.amount,
+            # JSON has no decimal number type. Preserve the exact value as text.
+            "amount": str(req.amount),
             "direction": req.direction,
             "transaction_id": tx.id,
             "timestamp": tx.created_at.isoformat(),
@@ -238,11 +237,25 @@ def get_balance(
     db: Session = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    txs = db.query(Transaction).filter(Transaction.user_id == user["user_id"]).all()
-    balance = sum(
-        tx.amount if tx.direction == "credit" else -tx.amount for tx in txs
+    balance = (
+        db.query(
+            func.coalesce(
+                func.sum(
+                    case(
+                        (Transaction.direction == "credit", Transaction.amount),
+                        else_=-Transaction.amount,
+                    )
+                ),
+                Decimal("0.00"),
+            )
+        )
+        .filter(Transaction.user_id == user["user_id"])
+        .scalar()
     )
-    return BalanceResponse(user_id=user["user_id"], balance=round(balance, 2))
+    return BalanceResponse(
+        user_id=user["user_id"],
+        balance=Decimal(balance).quantize(Decimal("0.01")),
+    )
 
 
 @app.get("/transactions", response_model=list[TransactionResponse])

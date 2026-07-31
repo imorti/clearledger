@@ -284,7 +284,7 @@ done
 banner "Step 15 of 15 — ClearLedger AWS demo stack is live"
 
 echo ""
-echo -e "${BOLD}Demo stack (not production):${NC} HTTP ALB, public EKS API, single env."
+echo -e "${BOLD}Demo stack (not production):${NC} HTTP ALB, CIDR-restricted EKS API, single env."
 echo -e "${BOLD}Secrets:${NC} ESO (default deploy) + CSI driver installed (§8.5 lab switches auth to file mounts)."
 echo -e "${BOLD}Manual steps:${NC} docs/LAB-GUIDE.md §8.2 — do not skip if you only ran make aws-up."
 echo -e "${BOLD}Ongoing deploys:${NC} ci-aws.yaml → update kustomization.yaml → ArgoCD sync."

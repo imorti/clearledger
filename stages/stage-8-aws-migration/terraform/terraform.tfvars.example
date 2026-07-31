@@ -4,3 +4,7 @@
 #   # edit terraform.tfvars — required for GitHub Actions OIDC (ci-aws.yaml)
 
 github_owner = "YOUR_GITHUB_USERNAME"
+
+# Replace with your current public IPv4 address. Find it with:
+#   curl -4 https://checkip.amazonaws.com
+eks_public_access_cidrs = ["203.0.113.10/32"]

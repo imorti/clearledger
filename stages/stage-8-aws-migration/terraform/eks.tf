@@ -74,9 +74,9 @@ resource "aws_eks_cluster" "main" {
     security_group_ids      = [aws_security_group.eks_cluster.id]
     endpoint_private_access = true
     endpoint_public_access  = true
-    # Why public_access: allows kubectl from the developer's host machine.
-    # In production, set to false and access via VPN or bastion.
-    public_access_cidrs = ["0.0.0.0/0"]
+    # Keep kubectl available from explicitly trusted operator networks only.
+    # Production environments should normally use the private endpoint via VPN.
+    public_access_cidrs = var.eks_public_access_cidrs
   }
 
   # Why audit logging: required for SOC2 CC7.3 and PCI-DSS 10.x compliance.

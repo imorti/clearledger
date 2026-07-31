@@ -122,3 +122,19 @@ variable "github_owner" {
     error_message = "Set github_owner in terraform.tfvars before apply (copy terraform.tfvars.example). Required for CI OIDC."
   }
 }
+
+variable "eks_public_access_cidrs" {
+  description = "Trusted public IPv4 CIDRs allowed to reach the EKS API (normally your current public IP as /32)"
+  type        = list(string)
+
+  validation {
+    condition = (
+      length(var.eks_public_access_cidrs) > 0
+      && !contains(var.eks_public_access_cidrs, "0.0.0.0/0")
+      && alltrue([
+        for cidr in var.eks_public_access_cidrs : can(cidrnetmask(cidr))
+      ])
+    )
+    error_message = "Set at least one valid trusted CIDR; 0.0.0.0/0 is intentionally rejected."
+  }
+}

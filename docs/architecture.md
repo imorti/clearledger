@@ -42,13 +42,15 @@ ledger-service publishes a `large_transaction` event to the `ledger-events` Redi
 Responsibilities: subscribe to ledger events, maintain an alert log, expose alerts via API.
 
 **API endpoints:**
-- `GET /alerts`: return the last 50 transaction alerts
+- `GET /alerts`: return the authenticated user's last 50 transaction alerts
 - `GET /health`: health check
 
-**Dependencies:** Redis (subscriber)
+**Dependencies:** Redis (subscriber), auth-service (JWT verification)
 
 **Pattern:** A background thread subscribes to `ledger-events` at startup.
 Large transaction events become alerts stored in memory (replace with a database in production).
+The API verifies the bearer token and filters this log by the authenticated
+`user_id`, so users cannot read each other's transaction activity.
 
 ---
 
@@ -72,6 +74,15 @@ ledger-service ──► auth-service /verify (validates JWT)
 notification-service ◄── Redis subscribe (background thread)
                      ──► in-memory alerts[]
 ```
+
+---
+
+## Database upgrades
+
+New databases create transaction amounts as `NUMERIC(18,2)`. Existing databases
+created by an older ClearLedger version must apply
+`app/ledger-service/migrations/001_amount_numeric.sql` before deploying the
+updated ledger service.
 
 ---
 

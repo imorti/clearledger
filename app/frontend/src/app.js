@@ -1,8 +1,8 @@
 'use strict';
 
 let state = {
-  token: localStorage.getItem('cl_token') || null,
-  email: localStorage.getItem('cl_email') || null,
+  token: sessionStorage.getItem('cl_token') || null,
+  email: sessionStorage.getItem('cl_email') || null,
   currentScreen: 'login',
   lastBalance: 0,
 };
@@ -202,8 +202,8 @@ async function login(email, password) {
 
     state.token = data.access_token;
     state.email = email;
-    localStorage.setItem('cl_token', state.token);
-    localStorage.setItem('cl_email', state.email);
+    sessionStorage.setItem('cl_token', state.token);
+    sessionStorage.setItem('cl_email', state.email);
 
     showScreen('dashboard');
     await loadDashboard();
@@ -240,8 +240,8 @@ async function register(email, password) {
 function logout() {
   state.token = null;
   state.email = null;
-  localStorage.removeItem('cl_token');
-  localStorage.removeItem('cl_email');
+  sessionStorage.removeItem('cl_token');
+  sessionStorage.removeItem('cl_email');
   showScreen('login');
 }
 
@@ -322,7 +322,7 @@ function renderSparkline(transactions) {
     width +
     ' ' +
     height +
-    '" style="overflow:visible">' +
+    '">' +
     '<polyline points="' +
     polyline +
     '" fill="none" stroke="' +
@@ -595,7 +595,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const verified = await api('/auth/verify');
       if (verified.email) {
         state.email = verified.email;
-        localStorage.setItem('cl_email', state.email);
+        sessionStorage.setItem('cl_email', state.email);
       }
       showScreen('dashboard');
       await loadDashboard();

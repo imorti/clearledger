@@ -33,6 +33,8 @@ spec:
           env:
             - name: REDIS_URL
               value: "redis://redis.clearledger.svc.cluster.local:6379"
+            - name: AUTH_SERVICE_URL
+              value: "http://auth-service.clearledger.svc.cluster.local"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://otel-collector.monitoring.svc.cluster.local:4317"
             - name: OTEL_SERVICE_NAME

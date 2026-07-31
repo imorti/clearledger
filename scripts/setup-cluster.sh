@@ -29,18 +29,27 @@ VM_MEMORY="${CLEARLEDGER_VM_MEMORY:-12G}"
 VM_DISK="${CLEARLEDGER_VM_DISK:-80G}"
 
 echo "==> Creating Multipass VM: $VM_NAME (${VM_CPUS} CPUs, ${VM_MEMORY} RAM, ${VM_DISK} disk)"
-multipass launch \
-  --name $VM_NAME \
-  --cpus $VM_CPUS \
-  --memory $VM_MEMORY \
-  --disk $VM_DISK \
-  $VM_IMAGE
+if multipass info "$VM_NAME" >/dev/null 2>&1; then
+  echo "==> Multipass VM already exists; resuming setup"
+  multipass start "$VM_NAME" >/dev/null 2>&1 || true
+else
+  multipass launch \
+    --name "$VM_NAME" \
+    --cpus "$VM_CPUS" \
+    --memory "$VM_MEMORY" \
+    --disk "$VM_DISK" \
+    "$VM_IMAGE"
+fi
 
 echo "==> Bootstrapping MicroK8s inside the VM..."
 multipass exec $VM_NAME -- bash -s << 'INNER'
 set -euo pipefail
 
-sudo snap install microk8s --classic --channel=1.29/stable
+if ! snap list microk8s >/dev/null 2>&1; then
+  sudo snap install microk8s --classic --channel=1.29/stable
+else
+  echo "MicroK8s is already installed; resuming bootstrap."
+fi
 sudo usermod -aG microk8s ubuntu
 newgrp microk8s << 'NEWGRP'
 microk8s enable dns ingress storage helm3 rbac
