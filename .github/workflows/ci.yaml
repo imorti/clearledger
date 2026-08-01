@@ -67,9 +67,18 @@ jobs:
 
       - name: Install Gitleaks (secrets detection engine)
         run: |
-          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz \
-            | tar -xz
-          sudo mv gitleaks /usr/local/bin/
+          set -euo pipefail
+          case "$(uname -m)" in
+            x86_64)        gitleaks_arch="x64" ;;
+            aarch64|arm64) gitleaks_arch="arm64" ;;
+            *) echo "Unsupported runner architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
+          mkdir -p "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          curl -sSfL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_${gitleaks_arch}.tar.gz" \
+            | tar -xzC "$HOME/.local/bin" gitleaks
+          "$HOME/.local/bin/gitleaks" version
 
       - name: Run Gitleaks (fail if any secret found)
         run: |
@@ -190,28 +199,41 @@ jobs:
     steps:
       - name: Install scanner CLIs (once per runner)
         run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            x86_64)
+              trivy_arch="64bit"
+              cosign_arch="amd64"
+              ;;
+            aarch64|arm64)
+              trivy_arch="ARM64"
+              cosign_arch="arm64"
+              ;;
+            *) echo "Unsupported runner architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
           mkdir -p "$HOME/.local/bin"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:$PATH"
-          if ! command -v trivy &>/dev/null; then
-            curl -sSfL \
-              "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
-              | tar -xzC "$HOME/.local/bin" trivy
-          fi
-          if ! command -v syft &>/dev/null; then
+          # Always refresh architecture-specific binaries so a stale x64 tool
+          # cannot survive after moving a runner to ARM64 (or vice versa).
+          curl -sSfL \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-${trivy_arch}.tar.gz" \
+            | tar -xzC "$HOME/.local/bin" trivy
+          if ! command -v syft &>/dev/null || ! syft version >/dev/null 2>&1; then
             curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
               | sh -s -- -b "$HOME/.local/bin"
           fi
-          if ! command -v grype &>/dev/null; then
+          if ! command -v grype &>/dev/null || ! grype version >/dev/null 2>&1; then
             curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh \
               | sh -s -- -b "$HOME/.local/bin"
           fi
-          if ! command -v cosign &>/dev/null; then
-            curl -sSfL https://github.com/sigstore/cosign/releases/download/v2.2.4/cosign-linux-amd64 \
-              -o "$HOME/.local/bin/cosign" && chmod +x "$HOME/.local/bin/cosign"
-          fi
+          curl -sSfL \
+            "https://github.com/sigstore/cosign/releases/download/v2.2.4/cosign-linux-${cosign_arch}" \
+            -o "$HOME/.local/bin/cosign"
+          chmod +x "$HOME/.local/bin/cosign"
           trivy --version
           grype version
+          cosign version
 
       - name: Refresh Trivy DB (once per workflow; Grype uses cache age on scan)
         run: |
@@ -370,10 +392,17 @@ jobs:
       - name: Sync manifests + set image tags (Kustomize)
         run: |
           set -euo pipefail
-          if ! command -v kustomize &>/dev/null; then
-            curl -sL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.3/kustomize_v5.4.3_linux_amd64.tar.gz" \
-              | tar xz && sudo mv kustomize /usr/local/bin/
-          fi
+          case "$(uname -m)" in
+            x86_64)        kustomize_arch="amd64" ;;
+            aarch64|arm64) kustomize_arch="arm64" ;;
+            *) echo "Unsupported runner architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
+          mkdir -p "$HOME/.local/bin"
+          export PATH="$HOME/.local/bin:$PATH"
+          curl -sSfL \
+            "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.3/kustomize_v5.4.3_linux_${kustomize_arch}.tar.gz" \
+            | tar -xzC "$HOME/.local/bin" kustomize
+          kustomize version
           # Copy full canonical tree — prevents probe/limit drift (prod: single source)
           # App secrets stay in GitOps until Stage 5 (learner deletes them from both repos).
           rsync -a --delete \

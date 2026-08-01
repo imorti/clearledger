@@ -3,6 +3,12 @@ cosign.key
 
 # Local Docker registry credentials / access tokens
 docker.key
+dockerhub.key_stage1.md
+gh_token.md
+infra/github_infra_PAT.md
+
+# GitHub Actions runner binaries and local registration state
+actions-runner/
 
 # Public key — safe to share, but exclude from repo so learners explicitly add their own
 cosign.pub

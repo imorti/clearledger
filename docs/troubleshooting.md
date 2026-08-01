@@ -368,6 +368,19 @@ runner, Docker Hub, security scanners, and the separate `clearledger-infra`
 repo at the same time. Most failures are configuration or scanner findings,
 not broken application code.
 
+### `Runner.Listener: cannot execute binary file`
+
+The runner is being executed on the wrong operating system or was downloaded
+for the wrong CPU architecture.
+
+1. Run the runner **inside** the Multipass VM, where the prompt starts with
+   `ubuntu@clearledger`, not from the macOS repository checkout.
+2. Run `uname -m` inside the VM.
+3. Download Linux `arm64` for `aarch64`/`arm64`, or Linux `x64` for `x86_64`.
+   LAB-GUIDE §1.2 contains an architecture-aware download block.
+4. Generate a fresh registration token. Never reuse a token pasted into logs,
+   chat, or shell history.
+
 ### Job stays queued waiting for a runner
 
 Symptom: the workflow shows "Waiting for a runner to pick up this job" even

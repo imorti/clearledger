@@ -1413,7 +1413,12 @@ GitHub gives you a full copy-paste install guide on one page. Use it — don’t
 
 1. Open **`https://github.com/YOUR_USERNAME/clearledger`**
 2. **Settings** → **Actions** → **Runners** → **New self-hosted runner**
-3. Select **Linux** and **x64**
+3. Check the VM architecture first:
+   ```bash
+   multipass exec clearledger -- uname -m
+   ```
+   Select **Linux** and then choose **ARM64** for `aarch64`/`arm64`, or
+   **x64** for `x86_64`. The runner architecture must match the VM.
 
 The page title should look like: **Add new self-hosted runner · YOUR_USERNAME/clearledger**.
 
@@ -1486,17 +1491,33 @@ What you proved: the VM can run Docker without Docker Desktop on your Mac. Conti
 
 Still inside the VM (`ubuntu@clearledger` prompt).
 
-**Download:** you can copy the commands from the **Download** section on GitHub’s runner page (Step 1), or run the block below — they should match. Paste into the VM, not your Mac.
+**Download:** use the architecture selected on GitHub’s runner page in Step 1,
+or run the architecture-aware block below. Paste it into the VM, not your Mac.
 
 **Configure:** use the lab command below, not GitHub’s `./config.sh` line. Paste your token from Step 1 and replace `YOUR_USERNAME`.
 
 ```bash
 mkdir -p ~/actions-runner && cd ~/actions-runner
 
-curl -o actions-runner-linux-x64-2.335.1.tar.gz -L \
-  https://github.com/actions/runner/releases/download/v2.335.1/actions-runner-linux-x64-2.335.1.tar.gz
+RUNNER_VERSION="2.336.0"
+case "$(uname -m)" in
+  aarch64|arm64)
+    RUNNER_ARCH="arm64"
+    RUNNER_SHA256="58b758e420b87093fbd4bfddd368074960053e2f1388f01848c82624b90f27d1"
+    ;;
+  x86_64)
+    RUNNER_ARCH="x64"
+    RUNNER_SHA256="04cf0be1aff4c3ec3554466c39124ca250e3effd8873bb7e8d68535aa9505d5d"
+    ;;
+  *) echo "Unsupported runner architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+RUNNER_TARBALL="actions-runner-linux-${RUNNER_ARCH}-${RUNNER_VERSION}.tar.gz"
 
-tar xzf ./actions-runner-linux-x64-2.335.1.tar.gz
+curl -fL -o "${RUNNER_TARBALL}" \
+  "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/${RUNNER_TARBALL}"
+
+echo "${RUNNER_SHA256}  ${RUNNER_TARBALL}" | sha256sum --check
+tar xzf "${RUNNER_TARBALL}"
 
 ./config.sh \
   --url https://github.com/YOUR_USERNAME/clearledger \
