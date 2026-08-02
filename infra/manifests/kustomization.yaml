@@ -26,14 +26,14 @@ resources:
 
 images:
   - name: clearledger/auth-service
-    newName: docker.io/YOUR_DOCKERHUB_USERNAME/clearledger-auth-service
+    newName: docker.io/imorti/clearledger-auth-service
     newTag: v0.1.0
   - name: clearledger/ledger-service
-    newName: docker.io/YOUR_DOCKERHUB_USERNAME/clearledger-ledger-service
+    newName: docker.io/imorti/clearledger-ledger-service
     newTag: v0.1.0
   - name: clearledger/notification-service
-    newName: docker.io/YOUR_DOCKERHUB_USERNAME/clearledger-notification-service
+    newName: docker.io/imorti/clearledger-notification-service
     newTag: v0.1.0
   - name: clearledger/frontend
-    newName: docker.io/YOUR_DOCKERHUB_USERNAME/clearledger-frontend
+    newName: docker.io/imorti/clearledger-frontend
     newTag: v0.1.0

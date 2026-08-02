@@ -10,7 +10,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/YOUR_GITHUB_USERNAME/clearledger-infra.git
+    repoURL: https://github.com/imorti/clearledger-infra.git
     targetRevision: main
     path: manifests
     # ArgoCD renders kustomization.yaml (image tags live there, not in deployment sed)
@@ -19,8 +19,8 @@ spec:
     namespace: clearledger
   syncPolicy:
     automated:
-      prune: true      # remove resources deleted from Git
-      selfHeal: true   # revert any manual kubectl changes — the GitOps contract
+      prune: true # remove resources deleted from Git
+      selfHeal: true # revert any manual kubectl changes — the GitOps contract
     syncOptions:
       - CreateNamespace=true
       - PrunePropagationPolicy=foreground
